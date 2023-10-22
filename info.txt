@@ -1,0 +1,4 @@
+name = Desert Eagle
+author = alwayscolorblind
+description = The best desert eagle in Teardown workshop.
+tags = Tool
