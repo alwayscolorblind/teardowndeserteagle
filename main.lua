@@ -14,6 +14,19 @@ ShootingAnimationPosition = 1
 
 Animations = {}
 
+CurrentAnimation = {}
+
+State = "idle"
+
+Animation = {
+	animation = {},
+	frames = 0,
+	current = 0,
+	ended = false,
+	shapes = nil,
+	initialTransforms = nil
+}
+
 function init()
 	--Register tool and enable it
 	RegisterTool("deserteagle", "Desert Eagle", "MOD/vox/deserteagle.vox")
@@ -25,24 +38,124 @@ function init()
 
 	ShootingAnimation = {
 		[GateShapeIndex] = {
+			nil,
+			nil,
+			nil,
+			nil,
 			Vec(0, 0, Voxel(1)),
 			Vec(0, 0, Voxel(1)),
 			Vec(0, 0, Voxel(1)),
 			Vec(0, 0, Voxel(1)),
-			Vec(0, 0, Voxel(-1)),
-			Vec(0, 0, Voxel(-1)),
-			Vec(0, 0, Voxel(-1)),
-			Vec(0, 0, Voxel(-1)),
-		}	
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+		},
+		[StrikerShapeIndex] = {
+			nil,
+			nil,
+			nil,
+			nil,
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(-1), Voxel(1)),
+		},
+		[TriggerShapeIndex] = {
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+		}
 	}
+
+	AddAnimation("fire", Animation:new(nil, ShootingAnimation))
+
+	ReloadingAnimation = {
+		[GateShapeIndex] = {
+			nil,
+			nil,
+			nil,
+			nil,
+			Vec(0, 0, Voxel(1)),
+			Vec(0, 0, Voxel(1)),
+			Vec(0, 0, Voxel(1)),
+			Vec(0, 0, Voxel(100)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.5)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+		},
+		[StrikerShapeIndex] = {
+			nil,
+			nil,
+			nil,
+			nil,
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(0.25), Voxel(-0.25)),
+			Vec(0, Voxel(-1), Voxel(1)),
+		},
+		[TriggerShapeIndex] = {
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+			Vec(0, 0, Voxel(-0.25)),
+		}
+	}
+
+	AddAnimation("reload", Animation:new(nil, ReloadingAnimation))
+end
+
+function SetState(state)
+	local animation = Animations[State]
+
+	if animation ~= nil then
+		-- animation:finish()
+		DebugPrint(animation.ended)
+	end
+	
+	State = state
 end
 
 function Fire()
-	IsShooting = true
+	SetState("fire")
+
+	local animation = Animations[State]
+	animation:start()
+
+	DebugPrint(animation.ended)
+
+	local cameraTransform = GetCameraTransform()
+
+	local p = TransformToParentPoint(cameraTransform, Vec(Voxel(20), Voxel(-5), Voxel(-10)))
+	local d = VecAdd(TransformToParentVec(cameraTransform, Vec(0, 0, Voxel(-5))))
+	Shoot(p, d)
 
 	ShakeCamera(CameraShake)
 
 	PlaySound(HitSound)
+end
+
+function Reload()
+	SetState("reload")
+
+	local animation = Animations[State]
+	animation:start()
 end
 
 function Voxel(voxel)
@@ -69,18 +182,77 @@ function GetMaxFrames(animationTable)
 	return maxFrames
 end
 
-function AddAnimation(name, animationTable)
-	local frames = GetMaxFrames(animationTable)
-
-	Animations[name] = {
-		frames = frames,
-		animationTable = animationTable
-	}
+function AddAnimation(name, animation)
+	Animations[name] = animation
 end
 
-function PlayAnimation(animationName) 
+function Animation:new(o, animationTable)
+	local o = {}
+	setmetatable(o, { __index = self })
 
+	o.animationTable = animationTable
+	o.frames = GetMaxFrames(animationTable)
+	o.currentFrame = 1
+	o.ended = false
+	o.shapes = nil
+	o.initialTransforms = {}
+
+	return o
 end
+
+function Animation:next()
+	if self.shapes == nil then
+		return
+	end
+
+	if self.currentFrame > self.frames then
+		self.currentFrame = 1
+		self.ended = true
+	end
+
+	if self.ended == false then
+		for shapeIndex, animation in pairs(self.animationTable) do
+			SetShapeOffset(self.shapes[shapeIndex], animation[self.currentFrame])
+		end
+
+		self.currentFrame = self.currentFrame + 1
+	end
+end
+
+function Animation:registerShapes(shapes) 
+	self.shapes = shapes
+
+	for index = 1, #shapes do
+		self.initialTransforms[index] = GetShapeLocalTransform(shapes[index])
+	end
+end
+
+function Animation:resetTransforms()
+	if self.initialTransforms == nil then
+		return
+	end
+
+	for index = 1, #self.initialTransforms do
+		SetShapeLocalTransform(self.shapes[index], self.initialTransforms[index])
+	end
+end
+
+function Animation:start()
+	self.resetTransforms(self)
+	self.currentFrame = 1
+	self.ended = false
+end
+
+function Animation:finish()
+	self.ended = true
+	self.currentFrame = 1
+	self.resetTransforms(self)
+end
+
+function Animation:foo()
+	DebugPrint("HIIIIi")
+end
+
 
 function tick(dt)
 	--Check if laser gun is selected
@@ -88,21 +260,25 @@ function tick(dt)
 		--Shooting
 		if InputPressed("usetool") then
 			Fire()
-			DebugPrint(GetMaxFrames(ShootingAnimation))
 		end
 
-		if ShootingAnimationPosition > #ShootingAnimation[GateShapeIndex] then
-			IsShooting = false
-			ShootingAnimationPosition = 1
+		if InputPressed("r") then
+			Reload()
 		end
 
-		if IsShooting == true then 
-			local body = GetToolBody()
-			local shapes = GetBodyShapes(body)
+		local animation = Animations[State]
 
-			SetShapeOffset(shapes[GateShapeIndex], ShootingAnimation[GateShapeIndex][ShootingAnimationPosition])
+		if animation ~= nil then
+			if animation.shapes == nil then
+				local body = GetToolBody()
+				local shapes = GetBodyShapes(body)
 
-			ShootingAnimationPosition = ShootingAnimationPosition + 1
+				animation:registerShapes(shapes)
+
+				animation:foo()
+			end
+
+			animation:next()
 		end
 	end
 end
